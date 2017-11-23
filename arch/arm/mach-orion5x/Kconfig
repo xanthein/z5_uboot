@@ -8,12 +8,16 @@ config TARGET_EDMINIV2
 	bool "LaCie Ethernet Disk mini V2"
 	select SUPPORT_SPL
 
+config TARGET_Z5
+	bool "Z5"
+
 endchoice
 
 config SYS_SOC
 	default "orion5x"
 
 source "board/LaCie/edminiv2/Kconfig"
+source "board/wistron/z5/Kconfig"
 
 config SPL_LDSCRIPT
 	default "$(CPUDIR)/orion5x/u-boot-spl.lds" if ORION5X

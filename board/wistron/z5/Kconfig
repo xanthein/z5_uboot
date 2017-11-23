@@ -1,0 +1,12 @@
+if TARGET_Z5
+
+config SYS_BOARD
+	default "z5"
+
+config SYS_VENDOR
+	default "wistron"
+
+config SYS_CONFIG_NAME
+	default "z5"
+
+endif
