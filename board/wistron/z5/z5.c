@@ -24,7 +24,7 @@
  */
 
 #include <common.h>
-
+#include <miiphy.h>
 #include "z5.h"
 
 #define ORION5X_REGS_PHYS_BASE	0xf1000000
@@ -191,3 +191,42 @@ static void z5_disable_cpu_streaming( void )
 	__asm__ __volatile__("mcr    p15, 0, %0, c1, c0, 0" : "=r" (temp):: "memory");
 }
 #endif
+
+#if defined(CONFIG_CMD_NET) && defined(CONFIG_RESET_PHY_R)
+/* Configure and enable MV88E1116 PHY */
+void reset_phy(void)
+{
+	u16 reg;
+	u16 devadr;
+	char *name = "egiga0";
+
+	if (miiphy_set_current_dev(name))
+		return;
+
+	/* command to read PHY dev address */
+	if (miiphy_read(name, 0xEE, 0xEE, (u16 *) &devadr)) {
+		printf("Err..%s could not read PHY dev address\n",
+			__func__);
+		return;
+	}
+
+	miiphy_read(name, devadr, MII_M1111_PHY_EXT_CR, &reg);
+	reg |= (MII_M1111_RX_DELAY | MII_M1111_TX_DELAY);
+	miiphy_write(name, devadr, MII_M1111_PHY_EXT_CR, reg);
+
+	miiphy_read(name, devadr, MII_M1111_PHY_EXT_SR, &reg);
+	reg &= ~(MII_M1111_HWCFG_MODE_MASK);
+	reg |= MII_M1111_HWCFG_MODE_COPPER_RGMII;
+	miiphy_write(name, devadr, MII_M1111_PHY_EXT_SR, reg);
+
+	miiphy_write(name, devadr, MII_ADVERTISE, ADVERTISE_100FULL | ADVERTISE_100HALF | ADVERTISE_10FULL | ADVERTISE_10HALF);
+
+	miiphy_write(name, devadr, MII_BMCR, BMCR_RESET);
+	miiphy_write(name, devadr, MII_BMCR, BMCR_ANENABLE);
+
+	/* reset the phy */
+	miiphy_reset(name, devadr);
+
+	printf("88E1111 Initialized on %s\n", name);
+}
+#endif /* CONFIG_RESET_PHY_R */
