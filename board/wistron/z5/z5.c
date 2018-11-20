@@ -25,10 +25,12 @@
 
 #include <common.h>
 #include <miiphy.h>
+#include <asm/arch/orion5x.h>
+#include <asm/arch/cpu.h>
 #include "z5.h"
 
-#define ORION5X_REGS_PHYS_BASE	0xf1000000
-#define ORION5X_REG_WRITE(a,d) (*(volatile unsigned int*)(ORION5X_REGS_PHYS_BASE | a) = (unsigned int)d)
+#define ORION5X_REG_WRITE(a,d) (*(volatile unsigned int*)(ORION5X_REGS_PHY_BASE | a) = (unsigned int)d)
+#define ORION5X_REG_READ(a) (*(volatile unsigned int*)(ORION5X_REGS_PHY_BASE | a))
 
 static inline void delay (unsigned long loops)
 {
@@ -41,8 +43,8 @@ DECLARE_GLOBAL_DATA_PTR;
 
 static void z5_init_pci( void );
 static void z5_init_devices( void );
-static void z5_remap_registers( void );
-static void z5_disable_cpu_streaming( void );
+void orion5x_pci_hw_rd_conf(int bus, int dev, u32 func,	u32 where, u32 *val);
+void orion5x_pci_hw_wr_conf(int bus, int dev, u32 func,	u32 where, u32 val);
 
 int board_init(void)
 {
@@ -53,9 +55,9 @@ int board_init(void)
 	gd->have_console = 1;
 	//serial_init();
 
-	//z5_init_devices();
+	z5_init_devices();
 	//z5_remap_registers();
-	//z5_init_pci();
+	z5_init_pci();
 	//z5_disable_cpu_streaming();
 
 	/* arch number of DNS323 */
@@ -71,19 +73,6 @@ int board_init(void)
 		*(unsigned int *)(0x0 + i) = *(unsigned int*)(0xfff90000 +i );
 	}
 
-	return 0;
-}
-#if 0
-int dram_init (void)
-{
-	gd->bd->bi_dram[0].start = 0x0;
-	gd->bd->bi_dram[0].size = 0x4000000; /* 64MB */
-
-	return 0;
-}
-
-int last_stage_init(void)
-{
 	return 0;
 }
 
@@ -113,39 +102,73 @@ static void z5_init_pci( void )
 	/* Setup PCI */
 	ORION5X_REG_WRITE(0x31d00, 0x80000030); /* PCI Arbiter - Enable */
 	delay(48);
-		
-	/* PCI Slave Address Decoding Registers */
-	ORION5X_REG_WRITE(0x30c08, 0x03fff000); /* CSn[0] BAR Size, 64MB */
-	ORION5X_REG_WRITE(0x30c10, 0x001ff000); /* DevCSn[0] BAR Size, 2MB */
-	ORION5X_REG_WRITE(0x30d10, 0x007ff000); /* DevCSn[1] BAR Size, 8MB */
-	ORION5X_REG_WRITE(0x30d18, 0x000ff000); /* DevCSn[2] BAR Size, 1MB */
-	ORION5X_REG_WRITE(0x30d14, 0x007ff000); /* DevCSn[3] BAR Size, 8MB */
-	
-	/* DevCS BAR Address */
-	ORION5X_REG_WRITE(0x30c50, DEVICE_CS0_BASE); 
-	ORION5X_REG_WRITE(0x30d50, DEVICE_CS1_BASE);
-	ORION5X_REG_WRITE(0x30d58, DEVICE_CS2_BASE);
-	ORION5X_REG_WRITE(0x30d54, BOOTDEV_CS_BASE);
 
-	ORION5X_REG_WRITE(0x30c3c, 0xffff7c8e); /* Enable Base Address Registers */
+	u32 p2p_config;
+	p2p_config = ORION5X_REG_READ(0x31d14);
+	int bus = (p2p_config & 0xff<<16)>>16;
+	int dev = (p2p_config & 0x1f<<24)>>24;
+
+	u32 temp;
+	/* PCI Slave Address Decoding Registers */
+	orion5x_pci_hw_rd_conf(bus, dev, 0, 0x20, &temp); /* Internal Reg Mem */
+	temp &= ~(0xfffff << 12);
+	temp |= ORION5X_REGS_PHY_BASE;
+	orion5x_pci_hw_wr_conf(bus, dev, 0, 0x20, temp);
+
+	orion5x_pci_hw_rd_conf(bus, dev, 4, 0x24, &temp); /* Internal Reg IO */
+	temp &= ~(0xfffff << 12);
+	temp |= ORION5X_REGS_PHY_BASE;
+	orion5x_pci_hw_wr_conf(bus, dev, 4, 0x24, temp);
+
+	ORION5X_REG_WRITE(0x30c08, 0x03fff000); /* CSn[0] BAR Size, 64MB */
+
+	ORION5X_REG_WRITE(0x30c10, ORION5X_SZ_DEV_CS0); /* DevCSn[0] BAR Size, 2MB */
+	ORION5X_REG_WRITE(0x30c50, ORION5X_ADR_DEV_CS0);
+	orion5x_pci_hw_rd_conf(bus, dev, 2, 0x10, &temp);
+	temp &= ~(0xfffff << 12);
+	temp |= ORION5X_ADR_DEV_CS0;
+	orion5x_pci_hw_wr_conf(bus, dev, 2, 0x10, temp);
+
+	ORION5X_REG_WRITE(0x30d10, ORION5X_SZ_DEV_CS1); /* DevCSn[1] BAR Size, 8MB */
+	ORION5X_REG_WRITE(0x30d50, ORION5X_ADR_DEV_CS1);
+	orion5x_pci_hw_rd_conf(bus, dev, 2, 0x18, &temp);
+	temp &= ~(0xfffff << 12);
+	temp |= ORION5X_ADR_DEV_CS1;
+	orion5x_pci_hw_wr_conf(bus, dev, 2, 0x18, temp);
+
+	ORION5X_REG_WRITE(0x30d18, ORION5X_SZ_DEV_CS2); /* DevCSn[2] BAR Size, 1MB */
+	ORION5X_REG_WRITE(0x30d58, ORION5X_ADR_DEV_CS2);
+	orion5x_pci_hw_rd_conf(bus, dev, 2, 0x20, &temp);
+	temp &= ~(0xfffff << 12);
+	temp |= ORION5X_ADR_DEV_CS2;
+	orion5x_pci_hw_wr_conf(bus, dev, 2, 0x20, temp);
+
+	ORION5X_REG_WRITE(0x30d14, ORION5X_SZ_BOOTROM); /* BootRom BAR Size, 8MB */
+	ORION5X_REG_WRITE(0x30d54, ORION5X_ADR_BOOTROM);
+	orion5x_pci_hw_rd_conf(bus, dev, 3, 0x18, &temp);
+	temp &= ~(0xfffff << 12);
+	temp |= ORION5X_ADR_BOOTROM;
+	orion5x_pci_hw_wr_conf(bus, dev, 3, 0x18, temp);
+
+	ORION5X_REG_WRITE(0x30c3c, 0xffff<<16 | 0x3<<14 | 1<<11 | 1<<10 | 1<<3 | 1<<2 | 1<<1); /* Enable Base Address Registers */
 	delay(48);
+
+	u32 pci_status_cmd;
+	orion5x_pci_hw_rd_conf(bus, dev, 0, 0x4, &pci_status_cmd);
+	pci_status_cmd |= 1<<1 | 1<<2 | 1<<4 | 1<<7;
+	orion5x_pci_hw_wr_conf(bus, dev, 0, 0x4, pci_status_cmd);
+
+	u32 pcix_status;
+	orion5x_pci_hw_rd_conf(bus, dev, 0, 0x64, &pcix_status);
+	pcix_status &= ~(0xff << 8);
+	pcix_status |= 1 << 8;
+	pcix_status &= ~(0x1f << 3);
+	pcix_status |= 0x0 << 3;
+	orion5x_pci_hw_wr_conf(bus, dev, 0, 0x64, pcix_status);
 }
 
 static void z5_init_devices( void )
 {
-#if 0 /* Moved to lowlevel init */
-	/* MPP Config */
-	ORION5X_REG_WRITE(0x10000, 0x00000000);
-	ORION5X_REG_WRITE(0x10004, 0x00000000);
-	ORION5X_REG_WRITE(0x10050, 0x00001111);
-	/* Disable orange leds */
-	ORION5X_REG_WRITE(0x10100, 0x00000006);
-	/* GPIO Enable */
-	ORION5X_REG_WRITE(0x10104, 0x000006e1);
-	/* Enable blinking power led */
-	ORION5X_REG_WRITE(0x10108, 0x00000108);
-#endif
-
 	/* Setup CS Magic Bits */
 	ORION5X_REG_WRITE(0x1045c, 0x8fcfffff); /* Device CS0, SRAM */
 	ORION5X_REG_WRITE(0x10460, 0x8fefffff); /* Device CS1, Flash */
@@ -153,44 +176,25 @@ static void z5_init_devices( void )
 	ORION5X_REG_WRITE(0x1046c, 0x8fcfffff); /* Bootdev CS */
 }
 
-static void z5_remap_registers( void )
+void orion5x_pci_hw_rd_conf(int bus, int dev, u32 func,
+					u32 where, u32 *val)
 {
-	/* Remap Registers */
-	ORION5X_REG_WRITE(0x20004, PEX0_MEM_BASE);
-	ORION5X_REG_WRITE(0x20008, PEX0_MEM_REMAP);
-	ORION5X_REG_WRITE(0x20000, PEX0_MEM_SIZE);
-	ORION5X_REG_WRITE(0x20014, PCI0_MEM_BASE);
-	ORION5X_REG_WRITE(0x20018, PCI0_MEM_REMAP);
-	ORION5X_REG_WRITE(0x20010, PCI0_MEM_SIZE);
+	ORION5X_REG_WRITE(0x30c78, PCI_CONF_BUS(bus) |
+		PCI_CONF_DEV(dev) | PCI_CONF_REG(where) |
+		PCI_CONF_FUNC(func) | PCI_CONF_ADDR_EN);
 
-	ORION5X_REG_WRITE(0x20024, PEX0_IO_BASE);
-	ORION5X_REG_WRITE(0x20020, PEX0_IO_SIZE);
-
-	ORION5X_REG_WRITE(0x20034, PCI0_IO_BASE);
-	ORION5X_REG_WRITE(0x20030, PCI0_IO_SIZE);
-
-	ORION5X_REG_WRITE(0x20054, DEVICE_CS0_BASE);
-	ORION5X_REG_WRITE(0x20050, DEVICE_CS0_SIZE);
-	
-	ORION5X_REG_WRITE(0x20064, DEVICE_CS1_BASE);
-	ORION5X_REG_WRITE(0x20060, DEVICE_CS1_SIZE);
-
-	ORION5X_REG_WRITE(0x20074, DEVICE_CS2_BASE);
-	ORION5X_REG_WRITE(0x20070, DEVICE_CS2_SIZE);
-
-	ORION5X_REG_WRITE(0x20044, BOOTDEV_CS_BASE);
-	ORION5X_REG_WRITE(0x20040, BOOTDEV_CS_SIZE);
+	*val = ORION5X_REG_READ(0x30c7c);
 }
 
-static void z5_disable_cpu_streaming( void )
+void orion5x_pci_hw_wr_conf(int bus, int dev, u32 func,
+					u32 where, u32 val)
 {
-	volatile unsigned int temp;
+	ORION5X_REG_WRITE(0x30c78, PCI_CONF_BUS(bus) |
+		PCI_CONF_DEV(dev) | PCI_CONF_REG(where) |
+		PCI_CONF_FUNC(func) | PCI_CONF_ADDR_EN);
 
-	__asm__ __volatile__("mrc    p15, 0, %0, c1, c0, 0" : "=r" (temp):: "memory");
-	temp &= 0xefffffff;
-	__asm__ __volatile__("mcr    p15, 0, %0, c1, c0, 0" : "=r" (temp):: "memory");
+	ORION5X_REG_WRITE(0x30c7c, val);
 }
-#endif
 
 #if defined(CONFIG_CMD_NET) && defined(CONFIG_RESET_PHY_R)
 /* Configure and enable MV88E1116 PHY */

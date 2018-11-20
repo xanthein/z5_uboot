@@ -19,6 +19,12 @@
 #define BOOTDEV_CS_BASE
 #define BOOTDEV_CS_SIZE
 
+#define PCI_CONF_REG(reg)               ((reg) & 0xfc)
+#define PCI_CONF_FUNC(func)             (((func) & 0x3) << 8)
+#define PCI_CONF_DEV(dev)               (((dev) & 0x1f) << 11)
+#define PCI_CONF_BUS(bus)               (((bus) & 0xff) << 16)
+#define PCI_CONF_ADDR_EN                (1 << 31)
+
 #define MII_M1111_PHY_LED_CONTROL       0x18
 #define MII_M1111_PHY_LED_DIRECT        0x4100
 #define MII_M1111_PHY_LED_COMBINE       0x411c
