@@ -27,6 +27,7 @@
 #include <miiphy.h>
 #include <asm/arch/orion5x.h>
 #include <asm/arch/cpu.h>
+#include <spl.h>
 #include "z5.h"
 
 #define ORION5X_REG_WRITE(a,d) (*(volatile unsigned int*)(ORION5X_REGS_PHY_BASE | a) = (unsigned int)d)
@@ -234,3 +235,21 @@ void reset_phy(void)
 	printf("88E1111 Initialized on %s\n", name);
 }
 #endif /* CONFIG_RESET_PHY_R */
+
+/*
+ * SPL serial setup and NOR boot device selection
+ */
+
+#ifdef CONFIG_SPL_BUILD
+
+void spl_board_init(void)
+{
+	preloader_console_init();
+}
+
+u32 spl_boot_device(void)
+{
+	return BOOT_DEVICE_NOR;
+}
+
+#endif /* CONFIG_SPL_BUILD */
